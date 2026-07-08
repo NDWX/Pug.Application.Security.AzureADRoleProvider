@@ -150,7 +150,7 @@ namespace Pug.Application.Security.AzureADRoleProvider
 			{
 				foreach( DirectoryObject directoryObject in response.Value ?? Enumerable.Empty<DirectoryObject>() )
 				{
-					if( directoryObject is Group { Id: not null } group )
+					if( directoryObject is Group group && group.Id != null )
 						groupIds.Add( group.Id );
 				}
 

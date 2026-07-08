@@ -12,13 +12,18 @@
         <RepositoryType>git</RepositoryType>
         <RepositoryUrl>https://github.com/NDWX/Pug.Application.Security.AzureADRoleProvider.git</RepositoryUrl>
         <PackageTags>Pug Application Security Role Provider AzureAD EntraID DependencyInjection</PackageTags>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageLicenseExpression>Apache-2.0+</PackageLicenseExpression>
         <License>Apache2.0</License>
         <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
         <AssemblyVersion>0.0.0.1</AssemblyVersion>
         <FileVersion>0.0.0.1</FileVersion>
-        <PackageVersion>0.0.1</PackageVersion>
+        <PackageVersion>0.0.2</PackageVersion>
     </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="\" />
+    </ItemGroup>
 
     <ItemGroup>
         <PackageReference Include="Azure.Identity" Version="1.17.1" />
