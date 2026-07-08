@@ -1,6 +1,6 @@
 namespace Pug.Application.Security.AzureADRoleProvider
 {
-	public class EntraIdRoleProviderOptions
+	public class AzureADRoleProviderOptions
 	{
 		/// <summary>
 		/// Application (client) ID of the Entra ID app registration whose app roles define the application role set.

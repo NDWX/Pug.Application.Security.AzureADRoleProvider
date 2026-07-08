@@ -1,0 +1,79 @@
+name: main - build and NuGet publish
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  BuildConfiguration: release
+  Solution: Pug.Application.Security.AzureADRoleProvider.sln
+  CoreProject: src/Pug.Application.Security.AzureADRoleProvider/Pug.Application.Security.AzureADRoleProvider.csproj
+  DependencyInjectionProject: src/Pug.Application.Security.AzureADRoleProvider.DependencyInjection/Pug.Application.Security.AzureADRoleProvider.DependencyInjection.csproj
+  PackagesBaseFolder: packages
+
+jobs:
+  build:
+    name: Build and publish NuGet packages
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # required to request the OIDC token for NuGet trusted publishing
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+
+      # Authenticates packages to push to GPR
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x' # SDK Version to use.
+          source-url: https://nuget.pkg.github.com/NDWX/index.json
+        env:
+          NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+      - name: SonarCloud Scan
+        run: |
+          dotnet tool install --global dotnet-sonarscanner
+          dotnet sonarscanner begin /o:ndwx /k:NDWX_Pug.Application.Security.AzureADRoleProvider /d:sonar.token=${{secrets.SONAR_TOKEN}} /d:sonar.host.url=https://sonarcloud.io /d:sonar.cs.opencover.reportsPaths=**/coverage.opencover.xml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Restore NuGet packages
+        run: dotnet restore --nologo ${{env.Solution}}
+
+      - name: Build solution
+        run: dotnet build --nologo --no-restore --configuration ${{env.BuildConfiguration}} ${{env.Solution}}
+
+      - name: Run tests
+        run: dotnet test --nologo --no-restore --no-build --configuration ${{env.BuildConfiguration}} --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover ${{env.Solution}}
+
+      - name: End Sonar scan
+        run: dotnet sonarscanner end /d:sonar.token=${{ secrets.SONAR_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: NuGet trusted publishing login
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: NDWX
+
+      - name: Create packages base folder
+        run: mkdir packages
+
+      - name: Pack Core project
+        run: dotnet pack --output ${{env.PackagesBaseFolder}} --nologo --no-build --configuration ${{env.BuildConfiguration}} ${{env.CoreProject}}
+
+      - name: Publish Core NuGet package to NuGet.org
+        run: dotnet nuget push ${{env.PackagesBaseFolder}}/*.nupkg --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Clear packages folder
+        run: rm packages/*.nupkg
+
+      - name: Pack Dependency Injection project
+        run: dotnet pack --output ${{env.PackagesBaseFolder}} --nologo --no-build --configuration ${{env.BuildConfiguration}} ${{env.DependencyInjectionProject}}
+
+      - name: Publish Dependency Injection NuGet package to NuGet.org
+        run: dotnet nuget push ${{env.PackagesBaseFolder}}/*.nupkg --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate

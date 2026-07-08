@@ -3,7 +3,7 @@ using Azure.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Graph;
 
-namespace Pug.Application.Security.AzureADRoleProvider
+namespace Pug.Application.Security.AzureADRoleProvider.DependencyInjection
 {
 	public static class IServiceCollectionExtensions
 	{
@@ -12,14 +12,14 @@ namespace Pug.Application.Security.AzureADRoleProvider
 		/// <summary>
 		/// Registers <see cref="PrincipalRoleProvider"/> using client-secret (app-only) authentication.
 		/// Roles are the app roles of the app registration identified by <paramref name="clientId"/>,
-		/// unless a different <see cref="EntraIdRoleProviderOptions.ApplicationId"/> is specified via
+		/// unless a different <see cref="AzureADRoleProviderOptions.ApplicationId"/> is specified via
 		/// <paramref name="configure"/>.
 		/// </summary>
-		public static IServiceCollection AddEntraIdRoleProvider(
+		public static IServiceCollection AddAzureADRoleProvider(
 			this IServiceCollection services, string tenantId, string clientId, string clientSecret,
-			Action<EntraIdRoleProviderOptions>? configure = null )
+			Action<AzureADRoleProviderOptions>? configure = null )
 		{
-			return services.AddEntraIdRoleProvider(
+			return services.AddAzureADRoleProvider(
 					new ClientSecretCredential( tenantId, clientId, clientSecret ),
 					clientId,
 					configure
@@ -30,11 +30,11 @@ namespace Pug.Application.Security.AzureADRoleProvider
 		/// Registers <see cref="PrincipalRoleProvider"/> using the specified app-only credential
 		/// (e.g. <see cref="ClientSecretCredential"/>, ClientCertificateCredential or ManagedIdentityCredential).
 		/// </summary>
-		public static IServiceCollection AddEntraIdRoleProvider(
+		public static IServiceCollection AddAzureADRoleProvider(
 			this IServiceCollection services, TokenCredential credential, string applicationId,
-			Action<EntraIdRoleProviderOptions>? configure = null )
+			Action<AzureADRoleProviderOptions>? configure = null )
 		{
-			return services.AddEntraIdRoleProvider(
+			return services.AddAzureADRoleProvider(
 					new GraphServiceClient( credential, GraphScopes ),
 					applicationId,
 					configure
@@ -44,12 +44,12 @@ namespace Pug.Application.Security.AzureADRoleProvider
 		/// <summary>
 		/// Registers <see cref="PrincipalRoleProvider"/> using an existing <see cref="GraphServiceClient"/>.
 		/// </summary>
-		public static IServiceCollection AddEntraIdRoleProvider(
+		public static IServiceCollection AddAzureADRoleProvider(
 			this IServiceCollection services, GraphServiceClient graphServiceClient, string applicationId,
-			Action<EntraIdRoleProviderOptions>? configure = null )
+			Action<AzureADRoleProviderOptions>? configure = null )
 		{
-			EntraIdRoleProviderOptions options =
-				new EntraIdRoleProviderOptions { ApplicationId = applicationId };
+			AzureADRoleProviderOptions options =
+				new AzureADRoleProviderOptions { ApplicationId = applicationId };
 
 			configure?.Invoke( options );
 

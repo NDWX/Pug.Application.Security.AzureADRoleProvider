@@ -25,29 +25,56 @@ namespace Pug.Application.Security.AzureADRoleProvider
 		}
 
 		/// <summary>
-		/// Object ID of the user or group the app role is assigned to.
+		/// Object ID of the user, group or service principal the app role is assigned to.
 		/// </summary>
 		public string PrincipalId { get; }
 
 		public Guid AppRoleId { get; }
 	}
 
+	internal enum PrincipalType
+	{
+		User,
+
+		/// <summary>
+		/// Application, service, API or any other resource represented by a service principal in the tenant.
+		/// </summary>
+		Application
+	}
+
+	internal sealed class PrincipalInfo
+	{
+		public PrincipalInfo( string objectId, PrincipalType type )
+		{
+			ObjectId = objectId;
+			Type = type;
+		}
+
+		public string ObjectId { get; }
+
+		public PrincipalType Type { get; }
+	}
+
 	/// <summary>
 	/// Thin abstraction over Microsoft Graph directory queries, allowing role resolution logic to be tested
 	/// without a live tenant.
 	/// </summary>
-	internal interface IEntraDirectoryGateway
+	internal interface IAzureADGateway
 	{
 		/// <returns>Service principal of the specified application within the tenant, or null when not found.</returns>
 		Task<ServicePrincipalInfo?> GetServicePrincipalAsync( string applicationId );
 
-		/// <param name="user">User object ID or user principal name.</param>
-		/// <returns>Object ID of the user, or null when the user does not exist.</returns>
-		Task<string?> GetUserObjectIdAsync( string user );
+		/// <param name="principal">
+		/// User object ID or principal name, or service principal object ID or application (client) ID.
+		/// </param>
+		/// <returns>Object ID and type of the principal, or null when no matching principal exists.</returns>
+		Task<PrincipalInfo?> ResolvePrincipalAsync( string principal );
 
-		Task<IReadOnlyCollection<string>> GetTransitiveGroupIdsAsync( string userObjectId );
+		Task<IReadOnlyCollection<string>> GetTransitiveGroupIdsAsync( PrincipalInfo principal );
 
-		/// <returns>All app role assignments (to users and groups) of the specified service principal.</returns>
+		/// <returns>
+		/// All app role assignments (to users, groups and service principals) of the specified service principal.
+		/// </returns>
 		Task<IReadOnlyCollection<AppRoleAssignmentInfo>> GetAppRoleAssignmentsAsync( string servicePrincipalObjectId );
 	}
 }

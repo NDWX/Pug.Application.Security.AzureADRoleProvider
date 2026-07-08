@@ -5,36 +5,38 @@ namespace Pug.Application.Security.AzureADRoleProvider
 	/// <summary>
 	/// <see cref="IPrincipalRoleProvider"/> and <see cref="IUserRoleProvider"/> implementation backed by
 	/// Microsoft Entra ID (formerly Azure AD). Roles are the app role assignments ('roles' claim) of the
-	/// application identified by <see cref="EntraIdRoleProviderOptions.ApplicationId"/>, including app roles
-	/// assigned through group membership. Microsoft Graph is queried app-only (client credentials); no
-	/// user authentication is required.
+	/// application identified by <see cref="AzureADRoleProviderOptions.ApplicationId"/>, including app roles
+	/// assigned through group membership. A principal may be a user (identified by object ID or principal
+	/// name) or an application, service or other API — i.e. a service principal, identified by object ID or
+	/// application (client) ID. Microsoft Graph is queried app-only (client credentials); no user
+	/// authentication is required.
 	/// </summary>
 #pragma warning disable CS0618 // IUserRoleProvider is obsolete but intentionally supported
 	public class PrincipalRoleProvider : IPrincipalRoleProvider, IUserRoleProvider
 #pragma warning restore CS0618
 	{
-		private readonly IEntraDirectoryGateway _directoryGateway;
-		private readonly EntraIdRoleProviderOptions _options;
+		private readonly IAzureADGateway _directoryGateway;
+		private readonly AzureADRoleProviderOptions _options;
 		private readonly TtlCache<ServicePrincipalInfo> _servicePrincipalCache;
 		private readonly TtlCache<IReadOnlyCollection<AppRoleAssignmentInfo>> _assignmentsCache;
 		private readonly TtlCache<IReadOnlyCollection<string>> _rolesCache;
 
-		public PrincipalRoleProvider( GraphServiceClient graphServiceClient, EntraIdRoleProviderOptions options )
+		public PrincipalRoleProvider( GraphServiceClient graphServiceClient, AzureADRoleProviderOptions options )
 			: this(
-				new GraphEntraDirectoryGateway(
+				new GraphAzureADGateway(
 					graphServiceClient ?? throw new ArgumentNullException( nameof(graphServiceClient) ) ),
 				options )
 		{
 		}
 
-		internal PrincipalRoleProvider( IEntraDirectoryGateway directoryGateway, EntraIdRoleProviderOptions options )
+		internal PrincipalRoleProvider( IAzureADGateway directoryGateway, AzureADRoleProviderOptions options )
 		{
 			if( options == null )
 				throw new ArgumentNullException( nameof(options) );
 
 			if( string.IsNullOrWhiteSpace( options.ApplicationId ) )
 				throw new ArgumentException(
-					$"{nameof(EntraIdRoleProviderOptions.ApplicationId)} must be specified", nameof(options) );
+					$"{nameof(AzureADRoleProviderOptions.ApplicationId)} must be specified", nameof(options) );
 
 			_directoryGateway = directoryGateway;
 			_options = options;
@@ -57,24 +59,23 @@ namespace Pug.Application.Security.AzureADRoleProvider
 				await _servicePrincipalCache.GetOrAddAsync( _options.ApplicationId, GetServicePrincipalAsync )
 						.ConfigureAwait( false );
 
-			string? userObjectId =
-				await _directoryGateway.GetUserObjectIdAsync( principal ).ConfigureAwait( false );
+			PrincipalInfo? principalInfo =
+				await _directoryGateway.ResolvePrincipalAsync( principal ).ConfigureAwait( false );
 
-			if( userObjectId == null )
-				return Array.Empty<string>();
+			if( principalInfo == null )
+				return [];
 
 			IReadOnlyCollection<string> groupIds =
-				await _directoryGateway.GetTransitiveGroupIdsAsync( userObjectId ).ConfigureAwait( false );
+				await _directoryGateway.GetTransitiveGroupIdsAsync( principalInfo ).ConfigureAwait( false );
 
 			IReadOnlyCollection<AppRoleAssignmentInfo> assignments =
 				await _assignmentsCache.GetOrAddAsync(
 							servicePrincipal.ObjectId, _directoryGateway.GetAppRoleAssignmentsAsync )
 						.ConfigureAwait( false );
 
-			HashSet<string> principalObjectIds =
-				new HashSet<string>( groupIds, StringComparer.OrdinalIgnoreCase ) { userObjectId };
+			HashSet<string> principalObjectIds = new(groupIds, StringComparer.OrdinalIgnoreCase) { principalInfo.ObjectId };
 
-			HashSet<string> roles = new HashSet<string>( StringComparer.Ordinal );
+			HashSet<string> roles = new( StringComparer.Ordinal );
 
 			foreach( AppRoleAssignmentInfo assignment in assignments )
 			{

@@ -4,7 +4,7 @@ namespace Pug.Application.Security.AzureADRoleProvider
 {
 	/// <summary>
 	/// Minimal thread-safe cache of asynchronously produced values with absolute per-entry expiry.
-	/// Faulted value tasks are evicted so errors are never cached.
+	/// Evict faulted value tasks so errors are never cached.
 	/// </summary>
 	internal sealed class TtlCache<TValue>
 	{
@@ -23,7 +23,7 @@ namespace Pug.Application.Security.AzureADRoleProvider
 
 		private readonly TimeSpan _timeToLive;
 		private readonly Func<DateTime> _clock;
-		private readonly ConcurrentDictionary<string, Entry> _entries = new ConcurrentDictionary<string, Entry>();
+		private readonly ConcurrentDictionary<string, Entry> _entries = new();
 
 		public TtlCache( TimeSpan timeToLive, Func<DateTime>? clock = null )
 		{
@@ -45,8 +45,7 @@ namespace Pug.Application.Security.AzureADRoleProvider
 
 			if( entry.Expiry <= now )
 			{
-				Entry replacement =
-					new Entry( new Lazy<Task<TValue>>( () => valueFactory( key ) ), now.Add( _timeToLive ) );
+				Entry replacement = new(new Lazy<Task<TValue>>(() => valueFactory(key)), now.Add(_timeToLive));
 
 				entry = _entries.TryUpdate( key, replacement, entry )
 							? replacement

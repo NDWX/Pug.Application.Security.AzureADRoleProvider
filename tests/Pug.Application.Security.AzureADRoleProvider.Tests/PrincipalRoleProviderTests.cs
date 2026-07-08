@@ -12,10 +12,12 @@ namespace Pug.Application.Security.AzureADRoleProvider.Tests
 		private const string UserPrincipalName = "jane.doe@contoso.com";
 		private const string GroupObjectId = "40000000-0000-0000-0000-000000000001";
 		private const string UnassignedGroupObjectId = "40000000-0000-0000-0000-000000000002";
+		private const string ClientApplicationObjectId = "50000000-0000-0000-0000-000000000001";
+		private const string ClientApplicationClientId = "50000000-0000-0000-0000-0000000000aa";
 
-		private static FakeEntraDirectoryGateway CreateGateway()
+		private static FakeAzureADGateway CreateGateway()
 		{
-			FakeEntraDirectoryGateway gateway = new FakeEntraDirectoryGateway();
+			FakeAzureADGateway gateway = new FakeAzureADGateway();
 
 			gateway.AppRoles[AdministratorRoleId] = "Administrator";
 			gateway.AppRoles[OperatorRoleId] = "Operator";
@@ -24,27 +26,30 @@ namespace Pug.Application.Security.AzureADRoleProvider.Tests
 			gateway.Users[UserObjectId] = UserObjectId;
 			gateway.Users[UserPrincipalName] = UserObjectId;
 
-			gateway.UserGroups[UserObjectId] = new List<string> { GroupObjectId, UnassignedGroupObjectId };
+			gateway.ServicePrincipals[ClientApplicationObjectId] = ClientApplicationObjectId;
+			gateway.ServicePrincipals[ClientApplicationClientId] = ClientApplicationObjectId;
 
-			// direct assignment
+			gateway.PrincipalGroups[UserObjectId] = new List<string> { GroupObjectId, UnassignedGroupObjectId };
+			gateway.PrincipalGroups[ClientApplicationObjectId] = new List<string> { GroupObjectId };
+
+			// direct assignment to user
 			gateway.Assignments.Add( new AppRoleAssignmentInfo( UserObjectId, AdministratorRoleId ) );
-			// group-inherited assignment
+			// group assignment, inherited by both the user and the client application service principal
 			gateway.Assignments.Add( new AppRoleAssignmentInfo( GroupObjectId, OperatorRoleId ) );
-			// assignment to unrelated principal
-			gateway.Assignments.Add(
-				new AppRoleAssignmentInfo( "50000000-0000-0000-0000-000000000001", AuditorRoleId ) );
+			// direct assignment to the client application service principal
+			gateway.Assignments.Add( new AppRoleAssignmentInfo( ClientApplicationObjectId, AuditorRoleId ) );
 
 			return gateway;
 		}
 
 		private static PrincipalRoleProvider CreateProvider(
-			FakeEntraDirectoryGateway gateway, TimeSpan? cacheDuration = null )
+			FakeAzureADGateway gateway, TimeSpan? cacheDuration = null )
 		{
 			return new PrincipalRoleProvider(
 					gateway,
-					new EntraIdRoleProviderOptions
+					new AzureADRoleProviderOptions
 					{
-						ApplicationId = FakeEntraDirectoryGateway.ApplicationId,
+						ApplicationId = FakeAzureADGateway.ApplicationId,
 						CacheDuration = cacheDuration ?? TimeSpan.FromMinutes( 5 )
 					}
 				);
@@ -109,6 +114,36 @@ namespace Pug.Application.Security.AzureADRoleProvider.Tests
 		}
 
 		[Fact]
+		public async Task ApplicationPrincipalGetsDirectAndGroupInheritedRoles()
+		{
+			PrincipalRoleProvider provider = CreateProvider( CreateGateway() );
+
+			IEnumerable<string> roles = await provider.GetPrincipalRolesAsync( ClientApplicationObjectId );
+
+			Assert.Equal(
+					new[] { "Auditor", "Operator" },
+					roles.OrderBy( role => role, StringComparer.Ordinal ) );
+		}
+
+		[Fact]
+		public async Task ApplicationPrincipalMayBeIdentifiedByClientId()
+		{
+			PrincipalRoleProvider provider = CreateProvider( CreateGateway() );
+
+			Assert.True( await provider.PrincipalIsInRoleAsync( ClientApplicationClientId, "Auditor" ) );
+			Assert.True( await provider.PrincipalIsInRoleAsync( ClientApplicationClientId, "Operator" ) );
+			Assert.False( await provider.PrincipalIsInRoleAsync( ClientApplicationClientId, "Administrator" ) );
+		}
+
+		[Fact]
+		public async Task UnknownPrincipalIdentifierHasNoRoles()
+		{
+			PrincipalRoleProvider provider = CreateProvider( CreateGateway() );
+
+			Assert.Empty( await provider.GetPrincipalRolesAsync( "99999999-0000-0000-0000-000000000000" ) );
+		}
+
+		[Fact]
 		public async Task UnknownUserHasNoRoles()
 		{
 			PrincipalRoleProvider provider = CreateProvider( CreateGateway() );
@@ -120,14 +155,14 @@ namespace Pug.Application.Security.AzureADRoleProvider.Tests
 		[Fact]
 		public async Task RolesAreCachedWithinCacheDuration()
 		{
-			FakeEntraDirectoryGateway gateway = CreateGateway();
+			FakeAzureADGateway gateway = CreateGateway();
 			PrincipalRoleProvider provider = CreateProvider( gateway );
 
 			await provider.GetPrincipalRolesAsync( UserObjectId );
 			await provider.GetPrincipalRolesAsync( UserObjectId );
 			await provider.PrincipalIsInRoleAsync( UserObjectId, "Administrator" );
 
-			Assert.Equal( 1, gateway.GetUserObjectIdCallCount );
+			Assert.Equal( 1, gateway.ResolvePrincipalCallCount );
 			Assert.Equal( 1, gateway.GetTransitiveGroupIdsCallCount );
 			Assert.Equal( 1, gateway.GetServicePrincipalCallCount );
 			Assert.Equal( 1, gateway.GetAppRoleAssignmentsCallCount );
@@ -136,25 +171,25 @@ namespace Pug.Application.Security.AzureADRoleProvider.Tests
 		[Fact]
 		public async Task ZeroCacheDurationDisablesCaching()
 		{
-			FakeEntraDirectoryGateway gateway = CreateGateway();
+			FakeAzureADGateway gateway = CreateGateway();
 			PrincipalRoleProvider provider = CreateProvider( gateway, TimeSpan.Zero );
 
 			await provider.GetPrincipalRolesAsync( UserObjectId );
 			await provider.GetPrincipalRolesAsync( UserObjectId );
 
-			Assert.Equal( 2, gateway.GetUserObjectIdCallCount );
+			Assert.Equal( 2, gateway.ResolvePrincipalCallCount );
 			Assert.Equal( 2, gateway.GetAppRoleAssignmentsCallCount );
 		}
 
 		[Fact]
 		public async Task UnknownApplicationCausesException()
 		{
-			FakeEntraDirectoryGateway gateway = CreateGateway();
+			FakeAzureADGateway gateway = CreateGateway();
 
 			PrincipalRoleProvider provider =
 				new PrincipalRoleProvider(
 					gateway,
-					new EntraIdRoleProviderOptions
+					new AzureADRoleProviderOptions
 						{ ApplicationId = "99999999-9999-9999-9999-999999999999" } );
 
 			await Assert.ThrowsAsync<InvalidOperationException>(
@@ -190,12 +225,12 @@ namespace Pug.Application.Security.AzureADRoleProvider.Tests
 		[Fact]
 		public async Task FailedResolutionIsNotCached()
 		{
-			FakeEntraDirectoryGateway gateway = CreateGateway();
+			FakeAzureADGateway gateway = CreateGateway();
 
 			PrincipalRoleProvider provider =
 				new PrincipalRoleProvider(
 					gateway,
-					new EntraIdRoleProviderOptions
+					new AzureADRoleProviderOptions
 						{ ApplicationId = "99999999-9999-9999-9999-999999999999" } );
 
 			await Assert.ThrowsAsync<InvalidOperationException>(
