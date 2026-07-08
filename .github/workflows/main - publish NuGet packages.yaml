@@ -64,7 +64,7 @@ jobs:
         run: mkdir packages
 
       - name: Pack Core project
-        run: dotnet pack --output ${{env.PackagesBaseFolder}} --nologo --no-build --configuration ${{env.BuildConfiguration}} ${{env.CoreProject}}
+        run: dotnet pack --output ${{env.PackagesBaseFolder}} --nologo --configuration ${{env.BuildConfiguration}} ${{env.CoreProject}}
 
       - name: Publish Core NuGet package to NuGet.org
         run: dotnet nuget push ${{env.PackagesBaseFolder}}/*.nupkg --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
@@ -73,7 +73,7 @@ jobs:
         run: rm packages/*.nupkg
 
       - name: Pack Dependency Injection project
-        run: dotnet pack --output ${{env.PackagesBaseFolder}} --nologo --no-build --configuration ${{env.BuildConfiguration}} ${{env.DependencyInjectionProject}}
+        run: dotnet pack --output ${{env.PackagesBaseFolder}} --nologo --configuration ${{env.BuildConfiguration}} ${{env.DependencyInjectionProject}}
 
       - name: Publish Dependency Injection NuGet package to NuGet.org
         run: dotnet nuget push ${{env.PackagesBaseFolder}}/*.nupkg --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
